@@ -1,7 +1,7 @@
 # mlamc
 
 ## How to build
-On Windows:
+On Windows in the mlamc git clone:
 ```
 SET FILES=mlamc.go api.go
 
