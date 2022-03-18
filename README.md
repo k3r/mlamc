@@ -1,5 +1,7 @@
 # mlamc
-# How to use it
+## What is it
+This is a client for the web service https://ml.charrel.fr/
+## How to use it
 ```
 # Get help
 C:\>mlamc -h
