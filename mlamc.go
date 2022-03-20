@@ -15,14 +15,23 @@ func testFile(filepath string, vt bool) (string, string) {
 	if err == nil {
 		fileSize = int(fi.Size())
 	} else {
-		return filepath, " cannot be sent are you sure the file exists and is available ?"
+		return "ERROR", filepath + " cannot be sent are you sure the file exists and is readable ?"
 	}
 
 	if fileSize > MAX_SIZE {
-		return filepath, " not sent because the file is too big."
+		return "ERROR", filepath + " not sent because the file is too big."
 	}
-	
-	return filepath, submitFile(filepath, vt)
+
+	// check if the file result is in the cache
+	status, message := submitHash(filepath)
+
+	if status != "NOT FOUND" {
+		return status, message
+	} else {
+		// If the file result is not in the cache, send the file to the webservice
+		status, message = submitFile(filepath, vt)
+		return status, message
+	}
 }
 
 /*
@@ -42,10 +51,13 @@ func stringInSlice(a string, list []string) bool {
 */
 func getFilesList(files, directories, extensions string) []string {
 	filesList := make([]string, 0)
+	// Files list are separated by ;
 	filesList = append(filesList, strings.Split(files, ";")...)
 
+	// Directory list are separated by ;
 	directoriesToBrowse := strings.Split(directories, ";")
 
+	// Get all files from the directory with selected extension and size <= MAX_SIZE
 	if len(directoriesToBrowse) > 0 {
 		extensionsToKeep := strings.Split(extensions, ";")
 		for _, v := range directoriesToBrowse {
@@ -93,19 +105,23 @@ func main() {
 	
 	malwaresList := make([]string, 0)
 
+	// First analysis without VirusTotal check to avoid VT threshold
 	for i := 0; i< len(filesList); i++ {
 		if filesList[i] != "" {
-			filepath, result := testFile(filesList[i], false)
-			if strings.Contains(result, "malware") {
-				malwaresList = append(malwaresList, filepath)
+			status, message := testFile(filesList[i], false)
+			if status == "MALWARE" || status == "MALWARE_BUT" {
+				malwaresList = append(malwaresList, filesList[i])
+			}
+			if status == "ERROR" {
+				fmt.Println("Error: ", message, " for file ", filesList[i])
 			}
 			if *verbose {
-				fmt.Println("[", i, "/", len(filesList), "] - ", filepath, " = ", result)
-
+				fmt.Println("[", i, "/", len(filesList), "] - ", filesList[i], " = ", status, " - ", message)
 			}
 		}
 	}
 
+	// If VT is disable display result, else check with vt malwares detected to be sure this is not FP.
 	if *disableVT {
 		fmt.Println("List of files detected as malicious:")
 		for _, v := range malwaresList {
@@ -118,15 +134,20 @@ func main() {
 		fmt.Println("List of files detected as malicious:")
 
 		for i := 0; i< len(malwaresList); i++ {
-			filepath, result := testFile(malwaresList[i], true)
-			if result != "Your file seems clean." {
-				result = strings.Replace(result, "<a href=\"", "", -1)
-				result = strings.Replace(result, "\">virustotal.com</a>.", " .", -1)
-				fmt.Println(filepath, " = " ,result)
+			status, message := testFile(malwaresList[i], true)
+			if status == "MALWARE" || status == "MALWARE_BUT" {
+
+				fmt.Println(malwaresList[i], " = ", message)
+			}
+			if status == "ERROR" {
+				fmt.Println("Error: ", message, " for file ", filesList[i])
 			}
 			if *verbose {
-				fmt.Println("[", i, "/", len(malwaresList), "] - ", filepath, " = ", result)
+				// Display file sent
+				fmt.Println("[", i + 1, "/", len(filesList), "] - ", filesList[i], " = ", status, " - ", message)
 			}
+
+			// Wait 30 secondes to avoid VT threshold
 			time.Sleep(30 * time.Second)
 		}
 

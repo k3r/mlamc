@@ -12,7 +12,6 @@ import (
 	"mime/multipart"
 	"bytes"
 	"time"
-	"regexp"
 	"strings"
 )
 
@@ -20,7 +19,16 @@ const API_VERSION string = "1.0"
 const URL string = "https://ml.charrel.fr/api.php"
 const MAX_SIZE int = 5000000
 
-func submitHash(filepath string) (string, string, string) {
+func checkAPIVersion(result map[string]string) {
+	if (result["version"] != API_VERSION) {
+		log.Fatalln(result, "Please update the version of the client. You can download the lastest version on https://github.com/k3r/mlamc .")
+	}
+}
+
+/*
+	Check if the hash of the file is already known by mlam.
+*/
+func submitHash(filepath string) (string, string) {
 	// Process the hash
 	f, err := os.Open(filepath)
 	if err != nil {
@@ -52,10 +60,15 @@ func submitHash(filepath string) (string, string, string) {
 
 	json.Unmarshal(body, &result)
 
-	return result["status"], result["result"], result["vt_positives"]
+	checkAPIVersion(result)
+
+	return result["status"], result["message"]
 }
 
-func submitFile(filepath string, vt bool) string {
+/*
+	Check if the file is malicious.
+*/
+func submitFile(filepath string, vt bool) (string, string) {
 	client := &http.Client{
         Timeout: time.Second * 60,
     }
@@ -63,8 +76,10 @@ func submitFile(filepath string, vt bool) string {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
+	// vt value
 	fw, err := writer.CreateFormField("vt")
     if err != nil {
+    	return "ERROR", "writer.CreateFormField(\"vt\")"
     }
 
     var vtValue string
@@ -76,9 +91,10 @@ func submitFile(filepath string, vt bool) string {
     }
     _, err = io.Copy(fw, strings.NewReader(vtValue))
     if err != nil {
-        return "ERROR"
+        return "ERROR", "io.Copy(fw, strings.NewReader(vtValue))"
     }
 
+    // file value
     fw, err = writer.CreateFormFile("file", filepath)
     if err != nil {
     }
@@ -88,50 +104,38 @@ func submitFile(filepath string, vt bool) string {
     }
     _, err = io.Copy(fw, file)
     if err != nil {
-        return "ERROR"
+        return "ERROR", "io.Copy(fw, file)"
     }
 
     // Close multipart writer.
     writer.Close()
-    req, err := http.NewRequest("POST", URL, bytes.NewReader(body.Bytes()))
+    req, err := http.NewRequest("POST", URL + "?action=submit_file", bytes.NewReader(body.Bytes()))
     if err != nil {
     	log.Println(err)
-        return "ERROR"
+        return "ERROR", "http.NewRequest"
     }
     req.Header.Set("Content-Type", writer.FormDataContentType())
-    rsp, err := client.Do(req)
+    resp, err := client.Do(req)
     if err == nil {
-	   	if rsp.StatusCode != http.StatusOK {
-	        log.Printf("Request failed with response code: %d", rsp.StatusCode)
-	        return "ERROR 2"
+	   	if resp.StatusCode != http.StatusOK {
+	        log.Printf("Request failed with response code: %d", resp.StatusCode)
+	        return "ERROR", "http.StatusOK"
 	    } else {
-		    b, err := ioutil.ReadAll(rsp.Body)
+			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
-				log.Println(err)
-				return "ERROR 1"
+			   return "ERROR", "ioutil.ReadAll(resp.Body)"
 			}
-			//Convert the body to type string
 
-			// <p id="result">Your file seems clean.</p>
-			r, _ := regexp.Compile("<p id=\"result\">(.+)</p>")
+			var result map[string]string
 
-			match := r.FindStringSubmatch(string(b))
+			json.Unmarshal(body, &result)
 
-			if match != nil && len(match) > 1 {
-				return match[1]
-			} else {
-				r, _ := regexp.Compile("<div class=\"alert alert-danger\" id=\"errors\">[\t\n\f\r ]+<ul>(.+)</ul>[\t\n\f\r ]+</div>")
-
-				match := r.FindStringSubmatch(string(b))
-				if match != nil && len(match) > 1 {
-					return match[1]
-				} else {
-					return string(b)
-				}
-			}
-	    }
+			checkAPIVersion(result)
+			
+			return result["status"], result["message"]
+		}
     } else {
     	log.Println(err)
-    	return "ERROR 3"
+    	return "ERROR", "client.Do(req)"
     }
 }
