@@ -69,7 +69,7 @@ func getFilesList(files, directories, extensions string) []string {
 					fileSize += int(fi.Size())
 				}
 
-		        if !info.IsDir() && stringInSlice(filepath.Ext(path), extensionsToKeep) && fileSize <= MAX_SIZE {
+		        if info != nil && !info.IsDir() && stringInSlice(filepath.Ext(path), extensionsToKeep) && fileSize <= MAX_SIZE {
 		            filesList = append(filesList, path)
 		        }
 		        return nil
@@ -116,7 +116,7 @@ func main() {
 				fmt.Println("Error: ", message, " for file ", filesList[i])
 			}
 			if *verbose {
-				fmt.Println("[", i, "/", len(filesList), "] - ", filesList[i], " = ", status, " - ", message)
+				fmt.Println("[", i + 1, "/", len(filesList), "] - ", filesList[i], " = ", status, " - ", message)
 			}
 		}
 	}
@@ -144,7 +144,7 @@ func main() {
 			}
 			if *verbose {
 				// Display file sent
-				fmt.Println("[", i + 1, "/", len(filesList), "] - ", filesList[i], " = ", status, " - ", message)
+				fmt.Println("[", i + 1, "/", len(malwaresList), "] - ", filesList[i], " = ", status, " - ", message)
 			}
 
 			// Wait 30 secondes to avoid VT threshold
